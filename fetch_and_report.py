@@ -165,8 +165,14 @@ def fetch_daily_ohlcv(inst, token, app_key, app_secret, days=35):
             df = yf.download("KRW=X", period="35d", interval="1d", progress=False, auto_adjust=True)
             if df.empty:
                 return None
-            df.index = pd.to_datetime(df.index)
+            if isinstance(df.columns, pd.MultiIndex):
+                df.columns = df.columns.get_level_values(0)
             df = df[["Open", "High", "Low", "Close", "Volume"]].copy()
+            df = df.dropna()
+            for col in ["Open", "High", "Low", "Close", "Volume"]:
+                df[col] = pd.to_numeric(df[col], errors="coerce")
+            df = df.dropna()
+            df.index = pd.to_datetime(df.index).tz_localize(None)
             df.index.name = "Date"
             return df.sort_index()
         except Exception:
