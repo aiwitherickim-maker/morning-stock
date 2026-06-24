@@ -1,0 +1,6 @@
+.env
+*.png
+*.html
+*.json
+logs/
+__pycache__/

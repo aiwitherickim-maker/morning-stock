@@ -7,6 +7,11 @@ import json
 import time
 from datetime import datetime, timedelta
 
+import smtplib
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+from email.mime.image import MIMEImage
+
 import requests
 import pandas as pd
 import matplotlib
@@ -232,6 +237,35 @@ def build_email_html(quotes, chart_cid):
 </body></html>"""
 
 
+def send_email(subject, html_body, chart_path, chart_cid, recipient):
+    smtp_user = os.environ.get("GMAIL_USER")
+    smtp_pass = os.environ.get("GMAIL_APP_PASSWORD")
+    if not smtp_user or not smtp_pass:
+        log("7.메일 발송", False, "GMAIL_USER / GMAIL_APP_PASSWORD 미설정")
+        return False
+    msg = MIMEMultipart("related")
+    msg["Subject"] = subject
+    msg["From"] = smtp_user
+    msg["To"] = recipient
+    alt = MIMEMultipart("alternative")
+    msg.attach(alt)
+    alt.attach(MIMEText(html_body, "html", "utf-8"))
+    if chart_path and os.path.exists(chart_path):
+        with open(chart_path, "rb") as f:
+            img = MIMEImage(f.read())
+        img.add_header("Content-ID", f"<{chart_cid}>")
+        img.add_header("Content-Disposition", "inline", filename=os.path.basename(chart_path))
+        msg.attach(img)
+    try:
+        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as smtp:
+            smtp.login(smtp_user, smtp_pass)
+            smtp.sendmail(smtp_user, recipient, msg.as_bytes())
+        return True
+    except Exception as e:
+        log("7.메일 발송", False, repr(e))
+        return False
+
+
 def main():
     print("=" * 60)
     print(f"  데일리 리포트 생성 시작 — {TODAY_KR}  (수신자: {RECIPIENT})")
@@ -298,6 +332,9 @@ def main():
     with open(meta_path, "w", encoding="utf-8") as f:
         json.dump(meta, f, ensure_ascii=False, indent=2)
     log("6.메타 저장", True, os.path.basename(meta_path))
+    subject = f"[일일 리포트] 주식 시황 & 금융 IT 뉴스 - {TODAY_KR}"
+    ok = send_email(subject, html, chart_path, chart_cid, RECIPIENT)
+    log("7.메일 발송", ok, f"-> {RECIPIENT}" if ok else "발송 실패")
     print("=" * 60)
     print(f"  - 차트: {chart_path}")
     print(f"  - 본문: {html_path}")
