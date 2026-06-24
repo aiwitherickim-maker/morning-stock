@@ -43,7 +43,7 @@ def _setup_korean_font():
 HAS_KR_FONT = _setup_korean_font()
 
 KIS_BASE = os.environ.get("KIS_BASE", "https://openapi.koreainvestment.com:9443")
-RECIPIENT = os.environ.get("REPORT_RECIPIENT", "yoonjin1964@gmail.com")
+RECIPIENT = os.environ.get("REPORT_RECIPIENT", "yoonjin1964@gmail.com,aiwitherickim@gmail.com")
 TODAY = datetime.now().strftime("%Y%m%d")
 TODAY_KR = datetime.now().strftime("%Y년 %m월 %d일")
 OUT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -306,7 +306,8 @@ def send_email(subject, html_body, chart_path, chart_cid, recipient):
     msg = MIMEMultipart("related")
     msg["Subject"] = subject
     msg["From"] = smtp_user
-    msg["To"] = recipient
+    recipients = [r.strip() for r in recipient.split(",")]
+    msg["To"] = ", ".join(recipients)
     alt = MIMEMultipart("alternative")
     msg.attach(alt)
     alt.attach(MIMEText(html_body, "html", "utf-8"))
@@ -319,7 +320,7 @@ def send_email(subject, html_body, chart_path, chart_cid, recipient):
     try:
         with smtplib.SMTP_SSL("smtp.gmail.com", 465) as smtp:
             smtp.login(smtp_user, smtp_pass)
-            smtp.sendmail(smtp_user, recipient, msg.as_bytes())
+            smtp.sendmail(smtp_user, recipients, msg.as_bytes())
         return True
     except Exception as e:
         log("7.메일 발송", False, repr(e))
