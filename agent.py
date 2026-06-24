@@ -199,7 +199,7 @@ def fetch_news_items(state):
     # 영구 쿼리 + 아직 유효한 한시적 쿼리
     queries = list(state.get("news_queries", []))
     queries += [t.get("query", "") for t in state.get("temp_news_queries", []) if t.get("query")]
-    seen, results = set(), []
+    seen, raw = set(), []
     for query in queries:
         if not query:
             continue
@@ -208,10 +208,60 @@ def fetch_news_items(state):
                 url = item.get("link", "")
                 if url not in seen:
                     seen.add(url)
-                    results.append(item)
+                    raw.append(item)
         except Exception as e:
             print(f"[에이전트] 뉴스 검색 실패 ({query}): {e}")
-    return results[:8]
+    return _filter_and_summarize_news(raw, state)
+
+
+def _filter_and_summarize_news(raw_items, state):
+    """Claude Haiku로 중복 제거 + 관련성 선별 + 1~2줄 요약."""
+    api_key = os.environ.get("ANTHROPIC_API_KEY")
+    if not api_key or not raw_items:
+        return raw_items[:8]
+    try:
+        import anthropic
+        client = anthropic.Anthropic(api_key=api_key)
+        interests = ", ".join(state.get("news_queries", []) +
+                              [t.get("query", "") for t in state.get("temp_news_queries", [])])
+        # 번호 붙인 기사 목록
+        articles = "\n".join(
+            f"[{i+1}] 제목: {strip_html(item.get('title',''))} | "
+            f"내용: {strip_html(item.get('description',''))[:150]} | "
+            f"URL: {item.get('link','')}"
+            for i, item in enumerate(raw_items)
+        )
+        prompt = f"""아래는 네이버 뉴스 검색 결과입니다. 독자의 관심 분야: {interests}
+
+{articles}
+
+다음 기준으로 최대 8건을 골라 JSON으로만 응답하세요 (설명 없이):
+1. 실질적으로 같은 사건을 다루는 기사는 가장 내용이 풍부한 1건만 선택
+2. 독자 관심 분야와 관련 높은 기사 우선
+3. 각 기사를 핵심만 담아 1~2문장으로 요약 (원문 문장 그대로 쓰지 말 것)
+
+{{"items": [{{"title": "기사 제목", "summary": "1~2줄 요약", "url": "URL"}}]}}"""
+
+        response = client.messages.create(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=1200,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        text = response.content[0].text.strip()
+        text = re.sub(r"^```(?:json)?\s*|\s*```$", "", text).strip()
+        data = json.loads(text)
+        results = []
+        for it in data.get("items", [])[:8]:
+            title = (it.get("title") or "").strip()
+            url = (it.get("url") or "").strip()
+            summary = (it.get("summary") or "").strip()
+            if title and url:
+                results.append({"title": title, "description": summary, "link": url})
+        print(f"[에이전트] 뉴스 Claude 필터: {len(raw_items)}건 → {len(results)}건")
+        return results
+    except Exception as e:
+        print(f"[에이전트] 뉴스 필터/요약 실패, 원본 반환: {e}")
+        return raw_items[:8]
 
 
 def fetch_seminar_items(state):
