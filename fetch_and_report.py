@@ -43,7 +43,7 @@ def _setup_korean_font():
 HAS_KR_FONT = _setup_korean_font()
 
 KIS_BASE = os.environ.get("KIS_BASE", "https://openapi.koreainvestment.com:9443")
-RECIPIENT = os.environ.get("REPORT_RECIPIENT", "aiwitherickim@gmail.com")
+RECIPIENT = os.environ.get("REPORT_RECIPIENT", "yoonjin1964@gmail.com")
 TODAY = datetime.now().strftime("%Y%m%d")
 TODAY_KR = datetime.now().strftime("%Y년 %m월 %d일")
 OUT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -294,10 +294,6 @@ def build_email_html(quotes, chart_cid):
   </table>
   <h3>📊 차트 (최근 1개월 일봉)</h3>
   <img src="cid:{chart_cid}" alt="합본 캔들차트" style="width:100%;max-width:760px;border:1px solid #eee"/>
-  <p style="color:#999;font-size:12px;margin-top:24px">
-    ※ 뉴스레터(금융 IT/세미나) 섹션은 이번 테스트에서 제외되었습니다.<br/>
-    ※ 본 메일은 테스트 발송입니다. 운영 전환 시 수신자를 yoonjin1964@gmail.com 으로 변경하세요.
-  </p>
 </body></html>"""
 
 
