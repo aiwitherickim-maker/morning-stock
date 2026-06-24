@@ -265,7 +265,11 @@ def build_combined_chart(charts, out_path):
     return drawn
 
 
-def build_email_html(quotes, chart_cid):
+def build_email_html(quotes, chart_cid, news_items=None, seminar_items=None):
+    import re
+    def strip_html(text):
+        return re.sub(r"<[^>]+>", "", text or "")
+
     def fmt(q):
         if q.get("price") is None:
             note = q.get("note", "N/A")
@@ -278,7 +282,51 @@ def build_email_html(quotes, chart_cid):
                 f"<td style='text-align:right'>{q['price']}</td>"
                 f"<td style='text-align:right;color:{color}'>{arrow} {q['diff']}</td>"
                 f"<td style='text-align:right;color:{color}'>{q['rate']}%</td></tr>")
+
     rows = "\n".join(fmt(q) for q in quotes)
+
+    news_html = ""
+    if news_items:
+        items_html = ""
+        for item in news_items:
+            title = strip_html(item.get("title", ""))
+            desc = strip_html(item.get("description", ""))
+            link = item.get("link", "#")
+            pub = item.get("pubDate", "")[:16]
+            items_html += f"""
+        <tr>
+          <td style="padding:8px 4px;border-bottom:1px solid #eee">
+            <a href="{link}" style="font-weight:bold;color:#1a0dab;text-decoration:none">{title}</a><br/>
+            <span style="color:#555;font-size:12px">{desc}</span><br/>
+            <span style="color:#999;font-size:11px">{pub}</span>
+          </td>
+        </tr>"""
+        news_html = f"""
+  <h3>📰 금융 IT 뉴스</h3>
+  <table cellspacing="0" cellpadding="0" style="width:100%;font-size:14px">
+    {items_html}
+  </table>"""
+
+    seminar_html = ""
+    if seminar_items:
+        items_html = ""
+        for item in seminar_items:
+            title = strip_html(item.get("title", ""))
+            desc = strip_html(item.get("description", ""))
+            link = item.get("link", "#")
+            items_html += f"""
+        <tr>
+          <td style="padding:8px 4px;border-bottom:1px solid #eee">
+            <a href="{link}" style="font-weight:bold;color:#1a0dab;text-decoration:none">{title}</a><br/>
+            <span style="color:#555;font-size:12px">{desc}</span>
+          </td>
+        </tr>"""
+        seminar_html = f"""
+  <h3>🗓️ 세미나 &amp; 행사</h3>
+  <table cellspacing="0" cellpadding="0" style="width:100%;font-size:14px">
+    {items_html}
+  </table>"""
+
     return f"""<!DOCTYPE html>
 <html><head><meta charset="utf-8"></head>
 <body style="font-family:'Apple SD Gothic Neo',Arial,sans-serif;color:#222;max-width:760px;margin:0 auto">
@@ -294,6 +342,8 @@ def build_email_html(quotes, chart_cid):
   </table>
   <h3>📊 차트 (최근 1개월 일봉)</h3>
   <img src="cid:{chart_cid}" alt="합본 캔들차트" style="width:100%;max-width:760px;border:1px solid #eee"/>
+  {news_html}
+  {seminar_html}
 </body></html>"""
 
 
@@ -331,6 +381,16 @@ def main():
     print("=" * 60)
     print(f"  데일리 리포트 생성 시작 — {TODAY_KR}  (수신자: {RECIPIENT})")
     print("=" * 60)
+
+    # 에이전트: Gmail 답장 확인 → 쿼리 업데이트 → 뉴스/세미나 수집
+    try:
+        from agent import run_agent
+        news_items, seminar_items = run_agent()
+        log("0.에이전트", True, f"뉴스 {len(news_items)}건 / 세미나 {len(seminar_items)}건")
+    except Exception as e:
+        log("0.에이전트", False, repr(e))
+        news_items, seminar_items = [], []
+
     app_key = os.environ.get("KIS_APP_KEY")
     app_secret = os.environ.get("KIS_APP_SECRET")
     if not app_key or not app_secret:
@@ -375,7 +435,7 @@ def main():
         log("4.차트 생성", False, repr(e))
         chart_path = None
     chart_cid = "combined_chart"
-    html = build_email_html(quotes, chart_cid)
+    html = build_email_html(quotes, chart_cid, news_items, seminar_items)
     html_path = os.path.join(OUT_DIR, f"email_body_{TODAY}.html")
     with open(html_path, "w", encoding="utf-8") as f:
         f.write(html)
