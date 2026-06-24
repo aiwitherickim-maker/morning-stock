@@ -58,8 +58,35 @@ def search_naver_web(query, display=5):
     return _naver_search("webkr.json", query, display)
 
 
+def _decode_subject(raw):
+    from email.header import decode_header
+    parts = []
+    for s, enc in decode_header(raw or ""):
+        if isinstance(s, bytes):
+            parts.append(s.decode(enc or "utf-8", errors="ignore"))
+        else:
+            parts.append(s)
+    return "".join(parts)
+
+
+def _extract_body(msg):
+    if msg.is_multipart():
+        for part in msg.walk():
+            if part.get_content_type() == "text/plain":
+                payload = part.get_payload(decode=True)
+                if payload:
+                    return payload.decode("utf-8", errors="ignore")
+        return ""
+    payload = msg.get_payload(decode=True)
+    return payload.decode("utf-8", errors="ignore") if payload else ""
+
+
 def read_gmail_replies():
-    """Read replies to the daily report email from the last 24 hours."""
+    """Read replies to the daily report email from the last 24 hours.
+
+    IMAP SEARCH 인자는 ASCII만 가능하므로(한글 제목으로 검색하면 imaplib가
+    인코딩 실패) SINCE 날짜로만 검색하고 제목은 파이썬에서 디코딩해 필터링한다.
+    """
     gmail_user = os.environ.get("GMAIL_USER")
     gmail_pass = os.environ.get("GMAIL_APP_PASSWORD")
     if not gmail_user or not gmail_pass:
@@ -69,21 +96,20 @@ def read_gmail_replies():
         mail.login(gmail_user, gmail_pass)
         mail.select("inbox")
         since = (datetime.now() - timedelta(days=1)).strftime("%d-%b-%Y")
-        _, data = mail.search(None, f'(SINCE {since} SUBJECT "Re: [일일 리포트]")')
+        _, data = mail.search(None, "SINCE", since)
         replies = []
         for num in data[0].split():
             _, msg_data = mail.fetch(num, "(RFC822)")
             msg = email.message_from_bytes(msg_data[0][1])
-            body = ""
-            if msg.is_multipart():
-                for part in msg.walk():
-                    if part.get_content_type() == "text/plain":
-                        body = part.get_payload(decode=True).decode("utf-8", errors="ignore")
-                        break
-            else:
-                body = msg.get_payload(decode=True).decode("utf-8", errors="ignore")
-            # Strip quoted reply lines
-            lines = [l for l in body.split("\n") if not l.startswith(">") and l.strip()]
+            subject = _decode_subject(msg.get("Subject", ""))
+            # 우리 리포트에 대한 '답장(Re:)'만 처리 (원본 발송 메일 제외)
+            if "일일 리포트" not in subject:
+                continue
+            if not subject.strip().lower().startswith("re:"):
+                continue
+            body = _extract_body(msg)
+            # 인용된 원문(>로 시작) 제거
+            lines = [l for l in body.split("\n") if not l.lstrip().startswith(">") and l.strip()]
             clean = "\n".join(lines[:30]).strip()
             if clean:
                 replies.append(clean)
@@ -122,7 +148,15 @@ JSON만 응답하세요 (설명 없이):
             max_tokens=300,
             messages=[{"role": "user", "content": prompt}],
         )
-        new_state = json.loads(response.content[0].text.strip())
+        text = response.content[0].text.strip()
+        # 코드펜스(```json ... ```) 제거
+        text = re.sub(r"^```(?:json)?\s*|\s*```$", "", text).strip()
+        new_state = json.loads(text)
+        # 형식 검증: 두 키 모두 리스트여야 함
+        if not (isinstance(new_state.get("news_queries"), list)
+                and isinstance(new_state.get("seminar_queries"), list)):
+            print("[에이전트] Claude 응답 형식 이상, 기존 쿼리 유지")
+            return current_state
         return new_state
     except Exception as e:
         print(f"[에이전트] Claude 쿼리 업데이트 실패: {e}")
