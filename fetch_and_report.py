@@ -49,7 +49,7 @@ OUT_DIR = os.path.dirname(os.path.abspath(__file__))
 
 INSTRUMENTS = [
     {"name": "코스피지수",      "en": "KOSPI",                    "code": "0001",      "type": "index"},
-    {"name": "아톤",            "en": "Atton (041920)",           "code": "041920",    "type": "stock"},
+    {"name": "아톤",            "en": "Atton (158430)",           "code": "158430",    "type": "stock"},
     {"name": "미래에셋증권",    "en": "Mirae Asset (006800)",     "code": "006800",    "type": "stock"},
     {"name": "TIGER K방산 ETF", "en": "TIGER K-Defense (443480)", "code": "443480",    "type": "etf"},
     {"name": "원달러환율",      "en": "USD/KRW",                  "code": "FX_USDKRW", "type": "fx"},
