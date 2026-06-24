@@ -230,21 +230,24 @@ def fetch_seminar_items(state):
         print(f"[에이전트] anthropic 패키지 없음: {e}")
         return []
 
+    today_iso = datetime.now().strftime("%Y-%m-%d")
     today_kr = datetime.now().strftime("%Y년 %m월 %d일")
     interests = ", ".join(state.get("seminar_queries", ["금융 IT 디지털"]))
-    prompt = f"""오늘은 {today_kr}입니다. 한국에서 열리는 금융 IT/디지털 관련 세미나·컨퍼런스·행사 일정을 웹에서 검색해 찾아주세요.
+    prompt = f"""오늘은 {today_kr}({today_iso})입니다. 한국에서 열리는 금융 IT/디지털 관련 세미나·컨퍼런스·행사 일정을 웹에서 검색해 찾아주세요.
 
 관심 분야: {interests}
 
 규칙(매우 중요):
 - 반드시 웹 검색으로 확인된 실제 정보만 사용하세요. 추측하거나 지어내지 마세요.
-- 행사명과 날짜가 확인되면 포함하세요. 주최·URL은 확인되는 만큼만 채우고, 모르면 빈 문자열("")로 두세요. (행사명·날짜 때문에 실제 행사를 빠뜨리지 마세요.)
-- 오늘({today_kr}) 이후에 열릴 예정인 행사만 포함하세요. 이미 지난 행사는 제외하세요.
+- **확정된 개최일(연·월·일)이 확인된 행사만 포함하세요.** 날짜가 "예정", "미정", 카테고리명, 장소명뿐이고 구체적 날짜가 없으면 제외하세요.
+- **오늘({today_iso}) 이후(당일 포함)에 열리는 행사만 포함하세요. 이미 지난 행사는 반드시 제외하세요.** (예: 행사일이 오늘보다 과거면 제외)
+- 각 행사의 시작일을 반드시 "date_iso" 필드에 YYYY-MM-DD 형식으로 적으세요. 시작일을 모르면 그 행사는 제외하세요.
+- 주최·URL은 확인되는 만큼만 채우고, 모르면 빈 문자열("")로 두세요.
 - 이벤터스(event-us.kr), 온오프믹스(onoffmix.com), ITFIND(itfind.or.kr), 디지털데일리(ddaily.co.kr/seminar), 금융 관련 기관/협회(자본시장연구원, 한국금융연구원 등) 공지를 참고하세요.
 - 최대 5개.
 
 마지막에 아래 JSON 형식으로만 결과를 출력하세요 (다른 설명 없이):
-{{"seminars": [{{"title": "행사명", "date": "YYYY-MM-DD 또는 기간", "host": "주최", "url": "출처 URL"}}]}}
+{{"seminars": [{{"title": "행사명", "date": "사람이 읽는 날짜/기간", "date_iso": "YYYY-MM-DD", "host": "주최", "url": "출처 URL"}}]}}
 확인된 행사가 없으면 {{"seminars": []}} 를 출력하세요."""
 
     try:
@@ -274,11 +277,19 @@ def fetch_seminar_items(state):
         for s in data.get("seminars", [])[:6]:
             title = (s.get("title") or "").strip()
             date = (s.get("date") or "").strip()
+            date_iso = (s.get("date_iso") or "").strip()
             url = (s.get("url") or "").strip()
-            # 행사명 + 날짜만 확인되면 포함 (주최·URL은 있으면 보강)
-            if not title or not date:
+            # 코드 차원 방어: 확정 날짜(YYYY-MM-DD)가 있고 오늘 이후인 행사만 통과
+            if not title:
                 continue
-            desc = " · ".join(p for p in [date, (s.get("host") or "").strip()] if p)
+            if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", date_iso):
+                print(f"[에이전트] 세미나 제외(날짜 미확정): {title} (date_iso={date_iso!r})")
+                continue
+            if date_iso < today_iso:
+                print(f"[에이전트] 세미나 제외(과거 행사): {title} ({date_iso})")
+                continue
+            label = date or date_iso  # 표시는 사람이 읽는 날짜 우선
+            desc = " · ".join(p for p in [label, (s.get("host") or "").strip()] if p)
             results.append({"title": title, "description": desc, "link": url})
         return results
     except Exception as e:
