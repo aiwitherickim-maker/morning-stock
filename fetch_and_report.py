@@ -238,30 +238,28 @@ def fetch_daily_ohlcv(inst, token, app_key, app_secret, days=35):
 def build_combined_chart(charts, out_path):
     plt.rcParams["axes.unicode_minus"] = False
     mc = mpf.make_marketcolors(up="red", down="blue", edge="inherit",
-                               wick={"up": "red", "down": "blue"},
-                               volume={"up": "red", "down": "blue"})
+                               wick={"up": "red", "down": "blue"})
     style = mpf.make_mpf_style(marketcolors=mc, gridstyle=":")
-    fig = plt.figure(figsize=(18, 11))
-    gs = fig.add_gridspec(4, 3, height_ratios=[3, 1, 3, 1], hspace=0.45, wspace=0.18)
+    fig = plt.figure(figsize=(18, 9))
+    gs = fig.add_gridspec(2, 3, hspace=0.45, wspace=0.18)
     drawn = 0
     for i, (inst, df) in enumerate(charts):
-        block, col = divmod(i, 3)
-        ax_price = fig.add_subplot(gs[block * 2, col])
-        ax_vol = fig.add_subplot(gs[block * 2 + 1, col], sharex=ax_price)
+        row, col = divmod(i, 3)
+        ax_price = fig.add_subplot(gs[row, col])
         title = inst["name"] if HAS_KR_FONT else inst["en"]
         if df is None or df.empty:
-            ax_vol.set_visible(False)
             ax_price.text(0.5, 0.5, f"{title}\n(데이터 없음)",
                           ha="center", va="center", fontsize=13)
             ax_price.set_xticks([]); ax_price.set_yticks([])
             continue
         rng = f"{df.index[0].strftime('%m/%d')} ~ {df.index[-1].strftime('%m/%d')}"
-        mpf.plot(df, type="candle", style=style, ax=ax_price, volume=ax_vol,
+        chart_type = "line" if inst["type"] == "fx" else "candle"
+        mpf.plot(df, type=chart_type, style=style, ax=ax_price,
                  axtitle=f"{title}  [{rng}]", datetime_format="%m/%d",
                  xrotation=0, warn_too_much_data=10000)
         drawn += 1
-    fig.suptitle(f"Daily Candlestick (1M)  -  {datetime.now().strftime('%Y-%m-%d')}",
-                 fontsize=17, y=0.96)
+    fig.suptitle(f"Daily Chart (1M)  -  {datetime.now().strftime('%Y-%m-%d')}",
+                 fontsize=17, y=0.98)
     fig.savefig(out_path, dpi=110)
     plt.close(fig)
     return drawn
