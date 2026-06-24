@@ -52,7 +52,7 @@ INSTRUMENTS = [
     {"name": "코스피지수",      "en": "KOSPI",                    "code": "0001",      "type": "index"},
     {"name": "아톤",            "en": "Atton (158430)",           "code": "158430",    "type": "stock"},
     {"name": "미래에셋증권",    "en": "Mirae Asset (006800)",     "code": "006800",    "type": "stock"},
-    {"name": "TIGER K방산 ETF", "en": "TIGER K-Defense (463250)", "code": "463250",    "type": "etf"},
+    {"name": "PLUS K방산 ETF",  "en": "PLUS K-Defense (449450)",  "code": "449450",    "type": "etf"},
     {"name": "원달러환율",      "en": "USD/KRW",                  "code": "FX_USDKRW", "type": "fx"},
 ]
 
