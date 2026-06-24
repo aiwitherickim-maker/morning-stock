@@ -51,7 +51,7 @@ INSTRUMENTS = [
     {"name": "코스피지수",      "en": "KOSPI",                    "code": "0001",      "type": "index"},
     {"name": "아톤",            "en": "Atton (041920)",           "code": "041920",    "type": "stock"},
     {"name": "미래에셋증권",    "en": "Mirae Asset (006800)",     "code": "006800",    "type": "stock"},
-    {"name": "TIGER K방산 ETF", "en": "TIGER K-Defense (443480)", "code": "443480",    "type": "stock"},
+    {"name": "TIGER K방산 ETF", "en": "TIGER K-Defense (443480)", "code": "443480",    "type": "etf"},
     {"name": "원달러환율",      "en": "USD/KRW",                  "code": "FX_USDKRW", "type": "fx"},
 ]
 
@@ -115,6 +115,20 @@ def fetch_quote(inst, token, app_key, app_secret):
             "sign": o.get("prdy_vrss_sign"),
             "rate": o.get("prdy_ctrt"),
         }
+    elif inst["type"] == "etf":
+        url = f"{KIS_BASE}/uapi/etfetn/v1/quotations/inquire-price"
+        params = {"FID_COND_MRKT_DIV_CODE": "J", "FID_INPUT_ISCD": inst["code"]}
+        r = requests.get(url, headers=_headers(token, app_key, app_secret, "FHPST02400000"),
+                         params=params, timeout=20)
+        r.raise_for_status()
+        o = r.json().get("output", {})
+        return {
+            "name": o.get("hts_kor_isnm") or inst["name"],
+            "price": o.get("stck_prpr"),
+            "diff": o.get("prdy_vrss"),
+            "sign": o.get("prdy_vrss_sign"),
+            "rate": o.get("prdy_ctrt"),
+        }
     elif inst["type"] == "fx":
         return {"name": inst["name"], "price": None, "diff": None,
                 "sign": None, "rate": None, "note": "KIS 국내주식 API 미지원"}
@@ -127,26 +141,40 @@ def fetch_daily_ohlcv(inst, token, app_key, app_secret, days=35):
         return None
     end = datetime.now()
     start = end - timedelta(days=days)
-    div = "U" if inst["type"] == "index" else "J"
-    url = f"{KIS_BASE}/uapi/domestic-stock/v1/quotations/inquire-daily-itemchartprice"
-    params = {
-        "FID_COND_MRKT_DIV_CODE": div,
-        "FID_INPUT_ISCD": inst["code"],
-        "FID_INPUT_DATE_1": start.strftime("%Y%m%d"),
-        "FID_INPUT_DATE_2": end.strftime("%Y%m%d"),
-        "FID_PERIOD_DIV_CODE": "D",
-        "FID_ORG_ADJ_PRC": "0",
-    }
-    r = requests.get(url, headers=_headers(token, app_key, app_secret, "FHKST03010100"),
-                     params=params, timeout=20)
-    r.raise_for_status()
-    rows = r.json().get("output2", []) or []
-    if not rows:
-        return None
+
     if inst["type"] == "index":
+        url = f"{KIS_BASE}/uapi/domestic-stock/v1/quotations/inquire-daily-indexchartprice"
+        params = {
+            "FID_COND_MRKT_DIV_CODE": "U",
+            "FID_INPUT_ISCD": inst["code"],
+            "FID_INPUT_DATE_1": start.strftime("%Y%m%d"),
+            "FID_INPUT_DATE_2": end.strftime("%Y%m%d"),
+            "FID_PERIOD_DIV_CODE": "D",
+        }
+        r = requests.get(url, headers=_headers(token, app_key, app_secret, "FHKUP03500100"),
+                         params=params, timeout=20)
+        r.raise_for_status()
+        rows = r.json().get("output2", []) or []
+        if not rows:
+            return None
         o_key, h_key, l_key, c_key = ("bstp_nmix_oprc", "bstp_nmix_hgpr",
                                        "bstp_nmix_lwpr", "bstp_nmix_prpr")
     else:
+        url = f"{KIS_BASE}/uapi/domestic-stock/v1/quotations/inquire-daily-itemchartprice"
+        params = {
+            "FID_COND_MRKT_DIV_CODE": "J",
+            "FID_INPUT_ISCD": inst["code"],
+            "FID_INPUT_DATE_1": start.strftime("%Y%m%d"),
+            "FID_INPUT_DATE_2": end.strftime("%Y%m%d"),
+            "FID_PERIOD_DIV_CODE": "D",
+            "FID_ORG_ADJ_PRC": "0",
+        }
+        r = requests.get(url, headers=_headers(token, app_key, app_secret, "FHKST03010100"),
+                         params=params, timeout=20)
+        r.raise_for_status()
+        rows = r.json().get("output2", []) or []
+        if not rows:
+            return None
         o_key, h_key, l_key, c_key = ("stck_oprc", "stck_hgpr", "stck_lwpr", "stck_clpr")
     recs = []
     for row in rows:
