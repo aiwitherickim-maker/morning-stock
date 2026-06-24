@@ -17,6 +17,9 @@ STATE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "state.jso
 DEFAULT_STATE = {
     "news_queries": ["금융 IT 디지털", "핀테크 AI", "금융 IT 세미나 일정", "은행 디지털 세미나"],
     "seminar_queries": ["금융 IT 세미나 일정", "은행 디지털 세미나"],
+    # 한시적 뉴스 쿼리: [{"query": "스테이블코인", "until": "2026-06-25"}]
+    # until(마지막으로 받을 날짜)이 지나면 자동 제거된다.
+    "temp_news_queries": [],
 }
 
 
@@ -108,7 +111,13 @@ def read_gmail_replies():
             lines = [l for l in body.split("\n") if not l.lstrip().startswith(">") and l.strip()]
             clean = "\n".join(lines[:30]).strip()
             if clean:
-                replies.append(clean)
+                # 보낸 날짜를 붙여 "내일/이번 주" 같은 상대 날짜를 정확히 해석하게 함
+                from email.utils import parsedate_to_datetime
+                try:
+                    sent_str = parsedate_to_datetime(msg.get("Date", "")).strftime("%Y-%m-%d")
+                except Exception:
+                    sent_str = datetime.now().strftime("%Y-%m-%d")
+                replies.append(f"[보낸 날짜: {sent_str}] {clean}")
         mail.logout()
         return replies
     except Exception as e:
@@ -125,43 +134,75 @@ def update_state_with_claude(replies, current_state):
         import anthropic
         client = anthropic.Anthropic(api_key=api_key)
         reply_text = "\n---\n".join(replies)
-        prompt = f"""현재 뉴스 검색 쿼리: {json.dumps(current_state['news_queries'], ensure_ascii=False)}
-현재 세미나 검색 쿼리: {json.dumps(current_state['seminar_queries'], ensure_ascii=False)}
+        today = datetime.now().strftime("%Y-%m-%d")
+        prompt = f"""오늘은 {today}입니다.
 
-수신자 요청:
+현재 영구 뉴스 쿼리: {json.dumps(current_state.get('news_queries', []), ensure_ascii=False)}
+현재 영구 세미나 쿼리: {json.dumps(current_state.get('seminar_queries', []), ensure_ascii=False)}
+현재 한시적 뉴스 쿼리: {json.dumps(current_state.get('temp_news_queries', []), ensure_ascii=False)}
+
+수신자 요청(각 요청 앞 [보낸 날짜]는 그 메일을 보낸 날):
 {reply_text}
 
-위 요청을 반영해 검색 쿼리를 업데이트하세요.
+수신자의 의도(intent)를 구분해서 쿼리를 업데이트하세요:
+- "내일부터", "앞으로", "계속", "이제부터", "도 받고 싶어"처럼 지속적 요청
+  → 영구 쿼리(news_queries / seminar_queries)에 추가·수정·삭제
+- "내일은", "오늘만", "이번 주만"처럼 특정 날짜/기간에만 받고 싶은 요청
+  → temp_news_queries에 {{"query": "...", "until": "YYYY-MM-DD"}} 형태로 추가
+    (until = 마지막으로 받을 날짜. "내일"/"이번 주" 같은 상대 날짜는 그 메일의 [보낸 날짜] 기준으로 계산)
+- 의도가 모호하면 영구로 처리하세요.
+
 JSON만 응답하세요 (설명 없이):
-{{"news_queries": [...], "seminar_queries": [...]}}
+{{"news_queries": [...], "seminar_queries": [...], "temp_news_queries": [{{"query": "...", "until": "YYYY-MM-DD"}}]}}
 
 규칙:
-- 기존 쿼리를 기반으로 추가/수정/삭제
-- 각 리스트 최대 5개
-- 한국어 쿼리"""
+- 각 영구 리스트 최대 5개, 한국어 쿼리
+- 기존 한시적 쿼리는 그대로 유지하고 새 요청만 추가"""
         response = client.messages.create(
             model="claude-haiku-4-5-20251001",
-            max_tokens=300,
+            max_tokens=500,
             messages=[{"role": "user", "content": prompt}],
         )
         text = response.content[0].text.strip()
         # 코드펜스(```json ... ```) 제거
         text = re.sub(r"^```(?:json)?\s*|\s*```$", "", text).strip()
         new_state = json.loads(text)
-        # 형식 검증: 두 키 모두 리스트여야 함
+        # 형식 검증: 영구 쿼리 두 키는 리스트여야 함
         if not (isinstance(new_state.get("news_queries"), list)
                 and isinstance(new_state.get("seminar_queries"), list)):
             print("[에이전트] Claude 응답 형식 이상, 기존 쿼리 유지")
             return current_state
+        # temp_news_queries 누락/이상 시 기존 값 유지
+        if not isinstance(new_state.get("temp_news_queries"), list):
+            new_state["temp_news_queries"] = current_state.get("temp_news_queries", [])
         return new_state
     except Exception as e:
         print(f"[에이전트] Claude 쿼리 업데이트 실패: {e}")
         return current_state
 
 
+def prune_expired_temps(state):
+    """만료된 한시적 쿼리 제거 (until < 오늘). 오늘 == until이면 마지막으로 받는 날이라 유지."""
+    today = datetime.now().strftime("%Y-%m-%d")
+    kept = []
+    for t in state.get("temp_news_queries", []):
+        until = (t.get("until") or "").strip()
+        if until and until >= today:
+            kept.append(t)
+        else:
+            print(f"[에이전트] 한시적 쿼리 만료 제거: {t.get('query')} (until={until})")
+    state["temp_news_queries"] = kept
+    return state
+
+
 def fetch_news_items(state):
+    # 영구 쿼리 + 아직 유효한 한시적 쿼리
+    queries = list(state.get("news_queries", []))
+    queries += [t.get("query", "") for t in state.get("temp_news_queries", []) if t.get("query")]
     seen, results = set(), []
-    for query in state.get("news_queries", []):
+    for query in queries:
+        if not query:
+            continue
         try:
             for item in search_naver_news(query, display=4):
                 url = item.get("link", "")
@@ -253,10 +294,11 @@ def run_agent():
     if replies:
         print(f"[에이전트] 답장 {len(replies)}개 발견, 쿼리 업데이트 중...")
         state = update_state_with_claude(replies, state)
-        save_state(state)
-        print(f"[에이전트] 업데이트된 쿼리: {state}")
-    else:
-        print("[에이전트] 새 답장 없음, 기존 쿼리 사용")
+
+    # 만료된 한시적 쿼리 정리 (답장 유무와 무관하게 매번)
+    state = prune_expired_temps(state)
+    save_state(state)
+    print(f"[에이전트] 현재 쿼리: {state}")
 
     news_items = fetch_news_items(state)
     seminar_items = fetch_seminar_items(state)
