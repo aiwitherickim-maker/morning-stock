@@ -326,7 +326,7 @@ def fetch_seminar_items(state):
         for _ in range(6):  # pause_turn(서버 도구 반복 한도) 대응
             response = client.messages.create(
                 model="claude-opus-4-8",
-                max_tokens=3000,
+                max_tokens=6000,
                 tools=tools,
                 messages=messages,
             )
@@ -343,7 +343,7 @@ def fetch_seminar_items(state):
         data = json.loads(m.group(0))
         raw_seminars = data.get("seminars", [])
         if not raw_seminars:
-            print(f"[에이전트] 세미나 0건 (Claude가 확정 행사 못 찾음). 응답 일부: {text[:200]}")
+            print(f"[에이전트] 세미나 0건 (Claude가 확정 행사 못 찾음). 응답 일부: {text[:500]}")
         results = []
         for s in raw_seminars[:6]:
             title = (s.get("title") or "").strip()
