@@ -253,7 +253,7 @@ def fetch_seminar_items(state):
     try:
         client = anthropic.Anthropic(api_key=api_key)
         messages = [{"role": "user", "content": prompt}]
-        tools = [{"type": "web_search_20260209", "name": "web_search", "max_uses": 5}]
+        tools = [{"type": "web_search_20260209", "name": "web_search", "max_uses": 3}]
         response = None
         for _ in range(4):  # pause_turn(서버 도구 반복 한도) 대응
             response = client.messages.create(
@@ -311,7 +311,12 @@ def run_agent():
     save_state(state)
     print(f"[에이전트] 현재 쿼리: {state}")
 
-    news_items = fetch_news_items(state)
-    seminar_items = fetch_seminar_items(state)
+    # 뉴스(Naver API)와 세미나(Claude 웹검색)를 병렬로 수집
+    from concurrent.futures import ThreadPoolExecutor
+    with ThreadPoolExecutor(max_workers=2) as ex:
+        f_news = ex.submit(fetch_news_items, state)
+        f_seminar = ex.submit(fetch_seminar_items, state)
+        news_items = f_news.result()
+        seminar_items = f_seminar.result()
     print(f"[에이전트] 뉴스 {len(news_items)}건, 세미나 {len(seminar_items)}건 수집")
     return news_items, seminar_items
