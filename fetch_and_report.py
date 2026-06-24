@@ -13,6 +13,7 @@ from email.mime.text import MIMEText
 from email.mime.image import MIMEImage
 
 import requests
+import yfinance as yf
 import pandas as pd
 import matplotlib
 matplotlib.use("Agg")
@@ -130,15 +131,46 @@ def fetch_quote(inst, token, app_key, app_secret):
             "rate": o.get("prdy_ctrt"),
         }
     elif inst["type"] == "fx":
+        try:
+            ticker = yf.Ticker("KRW=X")
+            hist = ticker.history(period="2d")
+            if len(hist) >= 2:
+                prev_close = hist["Close"].iloc[-2]
+                curr_close = hist["Close"].iloc[-1]
+                diff = curr_close - prev_close
+                rate = (diff / prev_close) * 100
+                sign = "1" if diff > 0 else "4" if diff < 0 else "3"
+                return {
+                    "name": inst["name"],
+                    "price": f"{curr_close:.2f}",
+                    "diff": f"{diff:+.2f}",
+                    "sign": sign,
+                    "rate": f"{rate:.2f}",
+                }
+            elif len(hist) == 1:
+                curr_close = hist["Close"].iloc[-1]
+                return {"name": inst["name"], "price": f"{curr_close:.2f}",
+                        "diff": "0", "sign": "3", "rate": "0.00"}
+        except Exception:
+            pass
         return {"name": inst["name"], "price": None, "diff": None,
-                "sign": None, "rate": None, "note": "KIS 국내주식 API 미지원"}
+                "sign": None, "rate": None, "note": "환율 데이터 수신 실패"}
     else:
         raise ValueError(f"알 수 없는 type: {inst['type']}")
 
 
 def fetch_daily_ohlcv(inst, token, app_key, app_secret, days=35):
     if inst["type"] == "fx":
-        return None
+        try:
+            df = yf.download("KRW=X", period="35d", interval="1d", progress=False, auto_adjust=True)
+            if df.empty:
+                return None
+            df.index = pd.to_datetime(df.index)
+            df = df[["Open", "High", "Low", "Close", "Volume"]].copy()
+            df.index.name = "Date"
+            return df.sort_index()
+        except Exception:
+            return None
     end = datetime.now()
     start = end - timedelta(days=days)
 

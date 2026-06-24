@@ -10,7 +10,7 @@ sudo apt-get update -y
 sudo apt-get install -y python3-pip python3-venv fonts-nanum git
 
 echo "=== [2/4] Python 의존성 설치 ==="
-pip3 install --quiet --break-system-packages requests pandas matplotlib mplfinance koreanize-matplotlib
+pip3 install --quiet --break-system-packages requests pandas matplotlib mplfinance koreanize-matplotlib yfinance
 
 echo "=== [3/4] .env 파일 확인 ==="
 if [ ! -f "$REPO_DIR/.env" ]; then
