@@ -282,6 +282,17 @@ def _parse_json_items(text):
         return items
 
 
+def _extract_seminars(text):
+    """응답 텍스트에서 seminars JSON을 추출. 없으면 None, 있으면 리스트."""
+    m = re.search(r'\{.*"seminars".*\}', text, re.DOTALL)
+    if not m:
+        return None
+    try:
+        return json.loads(m.group(0)).get("seminars", [])
+    except Exception:
+        return None
+
+
 def fetch_seminar_items(state):
     """Claude 웹검색 도구로 실제 세미나 일정을 찾는다 (출처 URL 포함, hallucination 방지).
 
@@ -301,29 +312,32 @@ def fetch_seminar_items(state):
     today_iso = datetime.now().strftime("%Y-%m-%d")
     today_kr = datetime.now().strftime("%Y년 %m월 %d일")
     interests = ", ".join(state.get("seminar_queries", ["금융 IT 디지털"]))
-    prompt = f"""오늘은 {today_kr}({today_iso})입니다. 한국에서 열리는 금융 IT/디지털 관련 세미나·컨퍼런스·행사 일정을 웹에서 검색해 찾아주세요.
-
+    prompt = f"""오늘은 {today_kr}({today_iso})입니다.
+한국에서 오늘 이후에 열리는 금융 IT/디지털 관련 세미나·컨퍼런스를 웹 검색으로 찾으세요.
 관심 분야: {interests}
 
-규칙(매우 중요):
-- 반드시 웹 검색으로 확인된 실제 정보만 사용하세요. 추측하거나 지어내지 마세요.
-- **확정된 개최일(연·월·일)이 확인된 행사만 포함하세요.** 날짜가 "예정", "미정", 카테고리명, 장소명뿐이고 구체적 날짜가 없으면 제외하세요.
-- **오늘({today_iso}) 이후(당일 포함)에 열리는 행사만 포함하세요. 이미 지난 행사는 반드시 제외하세요.** (예: 행사일이 오늘보다 과거면 제외)
-- 각 행사의 시작일을 반드시 "date_iso" 필드에 YYYY-MM-DD 형식으로 적으세요. 시작일을 모르면 그 행사는 제외하세요.
-- 주최·URL은 확인되는 만큼만 채우고, 모르면 빈 문자열("")로 두세요.
-- 이벤터스(event-us.kr), 온오프믹스(onoffmix.com), ITFIND(itfind.or.kr), 디지털데일리(ddaily.co.kr/seminar), 금융 관련 기관/협회(자본시장연구원, 한국금융연구원 등) 공지를 참고하세요.
+진행 방법(중요):
+- 코드를 작성하지 마세요. 웹 검색 결과 텍스트를 직접 읽고 판단하세요.
+- 핵심 키워드로 2~4번만 효율적으로 검색하세요. 검색 횟수는 제한적입니다.
+- 이벤터스(event-us.kr), 온오프믹스(onoffmix.com), ITFIND(itfind.or.kr), 디지털데일리(ddaily.co.kr/seminar) 등을 참고하세요.
+- 검색을 마치면 곧바로 아래 JSON으로 출력하세요.
+
+포함 기준:
+- 개최일(연·월·일)이 확인된 행사만 포함. 날짜가 "예정/미정", 카테고리명, 장소명뿐이면 제외.
+- 오늘({today_iso}) 이후(당일 포함)에 열리는 행사만. 지난 행사는 제외.
+- 각 행사 시작일을 "date_iso"에 YYYY-MM-DD로 적으세요. 시작일을 모르면 제외.
 - 최대 5개.
 
-마지막에 아래 JSON 형식으로만 결과를 출력하세요 (다른 설명 없이):
+출력은 아래 JSON 한 개만 (다른 설명 금지):
 {{"seminars": [{{"title": "행사명", "date": "사람이 읽는 날짜/기간", "date_iso": "YYYY-MM-DD", "host": "주최", "url": "출처 URL"}}]}}
 확인된 행사가 없으면 {{"seminars": []}} 를 출력하세요."""
 
     try:
         client = anthropic.Anthropic(api_key=api_key)
         messages = [{"role": "user", "content": prompt}]
-        tools = [{"type": "web_search_20260209", "name": "web_search", "max_uses": 5}]
+        tools = [{"type": "web_search_20260209", "name": "web_search", "max_uses": 8}]
         response = None
-        for _ in range(6):  # pause_turn(서버 도구 반복 한도) 대응
+        for _ in range(8):  # pause_turn(서버 도구 반복 한도) 대응
             response = client.messages.create(
                 model="claude-opus-4-8",
                 max_tokens=6000,
@@ -335,17 +349,29 @@ def fetch_seminar_items(state):
             messages.append({"role": "assistant", "content": response.content})
 
         text = "".join(b.text for b in response.content if b.type == "text").strip()
-        # JSON 객체만 추출
-        m = re.search(r'\{.*"seminars".*\}', text, re.DOTALL)
-        if not m:
-            print("[에이전트] 세미나 JSON 파싱 실패")
+        seminars = _extract_seminars(text)
+        # 검색 한도 소진 등으로 JSON을 못 냈으면, 도구 없이 한 번 더 마무리 요청
+        if seminars is None:
+            print("[에이전트] 세미나 JSON 미출력 → 도구 없이 마무리 요청")
+            messages.append({"role": "assistant", "content": response.content})
+            messages.append({"role": "user", "content":
+                "더 이상 검색하지 말고, 지금까지 확인한 행사만 위에서 지정한 JSON 형식으로만 출력하세요. "
+                "확인된 행사가 없으면 {\"seminars\": []} 를 출력하세요."})
+            response = client.messages.create(
+                model="claude-opus-4-8",
+                max_tokens=2000,
+                messages=messages,  # 도구 없음 → 바로 텍스트 출력
+            )
+            text = "".join(b.text for b in response.content if b.type == "text").strip()
+            seminars = _extract_seminars(text)
+
+        if seminars is None:
+            print(f"[에이전트] 세미나 JSON 파싱 실패. 응답 일부: {text[:500]}")
             return []
-        data = json.loads(m.group(0))
-        raw_seminars = data.get("seminars", [])
-        if not raw_seminars:
-            print(f"[에이전트] 세미나 0건 (Claude가 확정 행사 못 찾음). 응답 일부: {text[:500]}")
+        if not seminars:
+            print("[에이전트] 세미나 0건 (확정 행사 없음)")
         results = []
-        for s in raw_seminars[:6]:
+        for s in seminars[:6]:
             title = (s.get("title") or "").strip()
             date = (s.get("date") or "").strip()
             date_iso = (s.get("date_iso") or "").strip()
