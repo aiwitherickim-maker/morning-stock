@@ -238,30 +238,48 @@ def _filter_and_summarize_news(raw_items, state):
 다음 기준으로 최대 8건을 골라 JSON으로만 응답하세요 (설명 없이):
 1. 실질적으로 같은 사건을 다루는 기사는 가장 내용이 풍부한 1건만 선택
 2. 독자 관심 분야와 관련 높은 기사 우선
-3. 각 기사를 핵심만 담아 1~2문장으로 요약 (원문 문장 그대로 쓰지 말 것)
+3. 각 기사를 핵심만 담아 한 문장(최대 70자)으로 요약 (원문 문장 그대로 쓰지 말 것)
+4. 요약 안에 큰따옴표(")나 줄바꿈을 넣지 말 것
 
-{{"items": [{{"title": "기사 제목", "summary": "1~2줄 요약", "url": "URL"}}]}}"""
+{{"items": [{{"title": "기사 제목", "summary": "한 문장 요약", "url": "URL"}}]}}"""
 
         response = client.messages.create(
             model="claude-haiku-4-5-20251001",
-            max_tokens=1200,
+            max_tokens=3000,
             messages=[{"role": "user", "content": prompt}],
         )
         text = response.content[0].text.strip()
-        text = re.sub(r"^```(?:json)?\s*|\s*```$", "", text).strip()
-        data = json.loads(text)
+        items = _parse_json_items(text)
         results = []
-        for it in data.get("items", [])[:8]:
+        for it in items[:8]:
             title = (it.get("title") or "").strip()
             url = (it.get("url") or "").strip()
             summary = (it.get("summary") or "").strip()
             if title and url:
                 results.append({"title": title, "description": summary, "link": url})
+        if not results:
+            raise ValueError("선별 결과 0건")
         print(f"[에이전트] 뉴스 Claude 필터: {len(raw_items)}건 → {len(results)}건")
         return results
     except Exception as e:
         print(f"[에이전트] 뉴스 필터/요약 실패, 원본 반환: {e}")
         return raw_items[:8]
+
+
+def _parse_json_items(text):
+    """JSON 파싱. 응답이 잘려도 완성된 item 객체만 정규식으로 건져낸다."""
+    text = re.sub(r"^```(?:json)?\s*|\s*```$", "", text).strip()
+    try:
+        return json.loads(text).get("items", [])
+    except Exception:
+        # 잘린 JSON 폴백: url 키를 가진 완성된 객체만 추출
+        items = []
+        for m in re.finditer(r'\{[^{}]*?"url"\s*:\s*"[^"]*"[^{}]*?\}', text):
+            try:
+                items.append(json.loads(m.group(0)))
+            except Exception:
+                pass
+        return items
 
 
 def fetch_seminar_items(state):
@@ -303,9 +321,9 @@ def fetch_seminar_items(state):
     try:
         client = anthropic.Anthropic(api_key=api_key)
         messages = [{"role": "user", "content": prompt}]
-        tools = [{"type": "web_search_20260209", "name": "web_search", "max_uses": 3}]
+        tools = [{"type": "web_search_20260209", "name": "web_search", "max_uses": 5}]
         response = None
-        for _ in range(4):  # pause_turn(서버 도구 반복 한도) 대응
+        for _ in range(6):  # pause_turn(서버 도구 반복 한도) 대응
             response = client.messages.create(
                 model="claude-opus-4-8",
                 max_tokens=3000,
@@ -323,8 +341,11 @@ def fetch_seminar_items(state):
             print("[에이전트] 세미나 JSON 파싱 실패")
             return []
         data = json.loads(m.group(0))
+        raw_seminars = data.get("seminars", [])
+        if not raw_seminars:
+            print(f"[에이전트] 세미나 0건 (Claude가 확정 행사 못 찾음). 응답 일부: {text[:200]}")
         results = []
-        for s in data.get("seminars", [])[:6]:
+        for s in raw_seminars[:6]:
             title = (s.get("title") or "").strip()
             date = (s.get("date") or "").strip()
             date_iso = (s.get("date_iso") or "").strip()
