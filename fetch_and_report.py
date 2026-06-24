@@ -240,8 +240,8 @@ def build_combined_chart(charts, out_path):
     mc = mpf.make_marketcolors(up="red", down="blue", edge="inherit",
                                wick={"up": "red", "down": "blue"})
     style = mpf.make_mpf_style(marketcolors=mc, gridstyle=":")
-    fig = plt.figure(figsize=(18, 9))
-    gs = fig.add_gridspec(2, 3, hspace=0.45, wspace=0.18)
+    fig = plt.figure(figsize=(14, 7))
+    gs = fig.add_gridspec(2, 3, hspace=0.5, wspace=0.25)
     drawn = 0
     for i, (inst, df) in enumerate(charts):
         row, col = divmod(i, 3)
@@ -260,7 +260,7 @@ def build_combined_chart(charts, out_path):
         drawn += 1
     fig.suptitle(f"Daily Chart (1M)  -  {datetime.now().strftime('%Y-%m-%d')}",
                  fontsize=17, y=0.98)
-    fig.savefig(out_path, dpi=110)
+    fig.savefig(out_path, dpi=85)
     plt.close(fig)
     return drawn
 
