@@ -15,7 +15,7 @@ NAVER_CLIENT_SECRET = os.environ.get("NAVER_CLIENT_SECRET", "P3SyimQip1")
 STATE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "state.json")
 
 DEFAULT_STATE = {
-    "news_queries": ["금융 IT 디지털", "핀테크 AI"],
+    "news_queries": ["금융 IT 디지털", "핀테크 AI", "금융 IT 세미나 일정", "은행 디지털 세미나"],
     "seminar_queries": ["금융 IT 세미나 일정", "은행 디지털 세미나"],
 }
 
@@ -197,9 +197,9 @@ def fetch_seminar_items(state):
 
 규칙(매우 중요):
 - 반드시 웹 검색으로 확인된 실제 정보만 사용하세요. 추측하거나 지어내지 마세요.
-- 날짜·행사명·주최가 명확히 확인되지 않으면 그 항목은 제외하세요.
-- 오늘({today_kr}) 이후에 열릴 예정인 행사를 우선하세요.
-- 이벤터스(event-us.kr), 온오프믹스(onoffmix.com), 금융 관련 기관/협회 공지 등을 참고하세요.
+- 행사명과 날짜가 확인되면 포함하세요. 주최·URL은 확인되는 만큼만 채우고, 모르면 빈 문자열("")로 두세요. (행사명·날짜 때문에 실제 행사를 빠뜨리지 마세요.)
+- 오늘({today_kr}) 이후에 열릴 예정인 행사만 포함하세요. 이미 지난 행사는 제외하세요.
+- 이벤터스(event-us.kr), 온오프믹스(onoffmix.com), ITFIND(itfind.or.kr), 디지털데일리(ddaily.co.kr/seminar), 금융 관련 기관/협회(자본시장연구원, 한국금융연구원 등) 공지를 참고하세요.
 - 최대 5개.
 
 마지막에 아래 JSON 형식으로만 결과를 출력하세요 (다른 설명 없이):
@@ -232,10 +232,12 @@ def fetch_seminar_items(state):
         results = []
         for s in data.get("seminars", [])[:6]:
             title = (s.get("title") or "").strip()
+            date = (s.get("date") or "").strip()
             url = (s.get("url") or "").strip()
-            if not title or not url:
+            # 행사명 + 날짜만 확인되면 포함 (주최·URL은 있으면 보강)
+            if not title or not date:
                 continue
-            desc = " · ".join(p for p in [s.get("date"), s.get("host")] if p)
+            desc = " · ".join(p for p in [date, (s.get("host") or "").strip()] if p)
             results.append({"title": title, "description": desc, "link": url})
         return results
     except Exception as e:

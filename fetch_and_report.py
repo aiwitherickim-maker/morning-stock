@@ -313,11 +313,16 @@ def build_email_html(quotes, chart_cid, news_items=None, seminar_items=None):
         for item in seminar_items:
             title = strip_html(item.get("title", ""))
             desc = strip_html(item.get("description", ""))
-            link = item.get("link", "#")
+            link = (item.get("link") or "").strip()
+            # URL이 있으면 링크, 없으면 굵은 텍스트만
+            if link:
+                title_html = f'<a href="{link}" style="font-weight:bold;color:#1a0dab;text-decoration:none">{title}</a>'
+            else:
+                title_html = f'<span style="font-weight:bold;color:#222">{title}</span>'
             items_html += f"""
         <tr>
           <td style="padding:8px 4px;border-bottom:1px solid #eee">
-            <a href="{link}" style="font-weight:bold;color:#1a0dab;text-decoration:none">{title}</a><br/>
+            {title_html}<br/>
             <span style="color:#555;font-size:12px">{desc}</span>
           </td>
         </tr>"""
