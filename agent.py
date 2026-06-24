@@ -54,10 +54,6 @@ def search_naver_news(query, display=5):
     return _naver_search("news.json", query, display, {"sort": "date"})
 
 
-def search_naver_web(query, display=5):
-    return _naver_search("webkr.json", query, display)
-
-
 def _decode_subject(raw):
     from email.header import decode_header
     parts = []
@@ -178,17 +174,73 @@ def fetch_news_items(state):
 
 
 def fetch_seminar_items(state):
-    seen, results = set(), []
-    for query in state.get("seminar_queries", []):
-        try:
-            for item in search_naver_web(query, display=4):
-                url = item.get("link", "")
-                if url not in seen:
-                    seen.add(url)
-                    results.append(item)
-        except Exception as e:
-            print(f"[에이전트] 세미나 검색 실패 ({query}): {e}")
-    return results[:6]
+    """Claude 웹검색 도구로 실제 세미나 일정을 찾는다 (출처 URL 포함, hallucination 방지).
+
+    네이버 검색은 세미나 '일정'이 안 나오므로, 에이전트가 직접 웹을 검색해
+    앞으로 열릴 금융 IT 세미나/행사를 찾고 출처를 명시하도록 한다.
+    """
+    api_key = os.environ.get("ANTHROPIC_API_KEY")
+    if not api_key:
+        print("[에이전트] ANTHROPIC_API_KEY 없음, 세미나 검색 생략")
+        return []
+    try:
+        import anthropic
+    except Exception as e:
+        print(f"[에이전트] anthropic 패키지 없음: {e}")
+        return []
+
+    today_kr = datetime.now().strftime("%Y년 %m월 %d일")
+    interests = ", ".join(state.get("seminar_queries", ["금융 IT 디지털"]))
+    prompt = f"""오늘은 {today_kr}입니다. 한국에서 열리는 금융 IT/디지털 관련 세미나·컨퍼런스·행사 일정을 웹에서 검색해 찾아주세요.
+
+관심 분야: {interests}
+
+규칙(매우 중요):
+- 반드시 웹 검색으로 확인된 실제 정보만 사용하세요. 추측하거나 지어내지 마세요.
+- 날짜·행사명·주최가 명확히 확인되지 않으면 그 항목은 제외하세요.
+- 오늘({today_kr}) 이후에 열릴 예정인 행사를 우선하세요.
+- 이벤터스(event-us.kr), 온오프믹스(onoffmix.com), 금융 관련 기관/협회 공지 등을 참고하세요.
+- 최대 5개.
+
+마지막에 아래 JSON 형식으로만 결과를 출력하세요 (다른 설명 없이):
+{{"seminars": [{{"title": "행사명", "date": "YYYY-MM-DD 또는 기간", "host": "주최", "url": "출처 URL"}}]}}
+확인된 행사가 없으면 {{"seminars": []}} 를 출력하세요."""
+
+    try:
+        client = anthropic.Anthropic(api_key=api_key)
+        messages = [{"role": "user", "content": prompt}]
+        tools = [{"type": "web_search_20260209", "name": "web_search", "max_uses": 5}]
+        response = None
+        for _ in range(4):  # pause_turn(서버 도구 반복 한도) 대응
+            response = client.messages.create(
+                model="claude-opus-4-8",
+                max_tokens=3000,
+                tools=tools,
+                messages=messages,
+            )
+            if response.stop_reason != "pause_turn":
+                break
+            messages.append({"role": "assistant", "content": response.content})
+
+        text = "".join(b.text for b in response.content if b.type == "text").strip()
+        # JSON 객체만 추출
+        m = re.search(r'\{.*"seminars".*\}', text, re.DOTALL)
+        if not m:
+            print("[에이전트] 세미나 JSON 파싱 실패")
+            return []
+        data = json.loads(m.group(0))
+        results = []
+        for s in data.get("seminars", [])[:6]:
+            title = (s.get("title") or "").strip()
+            url = (s.get("url") or "").strip()
+            if not title or not url:
+                continue
+            desc = " · ".join(p for p in [s.get("date"), s.get("host")] if p)
+            results.append({"title": title, "description": desc, "link": url})
+        return results
+    except Exception as e:
+        print(f"[에이전트] 세미나 웹검색 실패: {e}")
+        return []
 
 
 def run_agent():
