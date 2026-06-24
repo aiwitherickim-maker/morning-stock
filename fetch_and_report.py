@@ -133,7 +133,8 @@ def fetch_quote(inst, token, app_key, app_secret):
     elif inst["type"] == "fx":
         try:
             ticker = yf.Ticker("KRW=X")
-            hist = ticker.history(period="2d")
+            hist = ticker.history(period="5d")
+            hist = hist[hist.index.date < datetime.now().date()]
             if len(hist) >= 2:
                 prev_close = hist["Close"].iloc[-2]
                 curr_close = hist["Close"].iloc[-1]
