@@ -318,10 +318,10 @@ def fetch_seminar_items(state):
 
 진행 방법(중요):
 - 코드를 작성하지 마세요.
-- 먼저 web_search로 행사 목록/플랫폼 페이지를 찾으세요.
+- **가장 먼저 디지털데일리 세미나 목록 페이지(https://www.ddaily.co.kr/seminar/ 또는 https://seminar.ddaily.co.kr/)를 web_fetch로 직접 여세요.** 여기에 금융 IT/디지털 세미나가 개최일과 함께 정리돼 있습니다. 금융 오찬세미나 같은 행사가 여기서 나옵니다.
+- 그 다음 부족하면 web_search로 보강하고, 이벤터스(event-us.kr/search), 온오프믹스(onoffmix.com), 한국핀테크지원센터(fintech.or.kr) 등도 web_fetch로 열어 확인하세요.
 - **검색 스니펫에는 날짜가 안 나오는 경우가 많습니다. 행사 목록·상세 페이지를 web_fetch로 직접 열어 실제 개최일(연·월·일)을 확인하세요.**
-- 이벤터스(event-us.kr/search), 온오프믹스(onoffmix.com), ITFIND(itfind.or.kr), 디지털데일리(ddaily.co.kr/seminar), 한국핀테크지원센터(fintech.or.kr) 등을 참고하세요.
-- 검색·열람을 효율적으로(web_search 3회 이내, web_fetch 3회 이내) 하고, 마치면 곧바로 아래 JSON으로 출력하세요. 완벽함보다 속도가 중요합니다.
+- 마치면 곧바로 아래 JSON으로 출력하세요.
 
 포함 기준:
 - 개최일(연·월·일)이 확인된 행사만 포함. 날짜가 "예정/미정", 카테고리명, 장소명뿐이면 제외.
@@ -337,11 +337,11 @@ def fetch_seminar_items(state):
         client = anthropic.Anthropic(api_key=api_key)
         messages = [{"role": "user", "content": prompt}]
         tools = [
-            {"type": "web_search_20260209", "name": "web_search", "max_uses": 4},
-            {"type": "web_fetch_20260209", "name": "web_fetch", "max_uses": 3},
+            {"type": "web_search_20260209", "name": "web_search", "max_uses": 5},
+            {"type": "web_fetch_20260209", "name": "web_fetch", "max_uses": 5},
         ]
         response = None
-        for _ in range(4):  # pause_turn(서버 도구 반복 한도) 대응
+        for _ in range(6):  # pause_turn(서버 도구 반복 한도) 대응
             response = client.messages.create(
                 model="claude-opus-4-8",
                 max_tokens=6000,
@@ -419,9 +419,9 @@ def run_agent():
     f_seminar = ex.submit(fetch_seminar_items, state)
     news_items = f_news.result()
     try:
-        seminar_items = f_seminar.result(timeout=120)  # 세미나 검색 최대 2분
+        seminar_items = f_seminar.result(timeout=180)  # 세미나 검색 최대 3분
     except FutureTimeout:
-        print("[에이전트] 세미나 검색 시간 초과(120초) → 세미나 생략")
+        print("[에이전트] 세미나 검색 시간 초과(180초) → 세미나 생략")
         seminar_items = []
     ex.shutdown(wait=False)
     print(f"[에이전트] 뉴스 {len(news_items)}건, 세미나 {len(seminar_items)}건 수집")
