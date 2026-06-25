@@ -16,7 +16,7 @@ STATE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "state.jso
 
 DEFAULT_STATE = {
     "news_queries": ["금융 IT 디지털", "핀테크 AI", "금융 IT 세미나 일정", "은행 디지털 세미나"],
-    "seminar_queries": ["IT 디지털 세미나", "금융 핀테크 세미나", "AI 컨퍼런스"],
+    "seminar_queries": ["금융 IT 디지털 세미나", "금융 핀테크 세미나", "은행 디지털 컨퍼런스"],
     # 한시적 뉴스 쿼리: [{"query": "스테이블코인", "until": "2026-06-25"}]
     # until(마지막으로 받을 날짜)이 지나면 자동 제거된다.
     "temp_news_queries": [],
