@@ -204,7 +204,7 @@ def fetch_news_items(state):
         if not query:
             continue
         try:
-            for item in search_naver_news(query, display=4):
+            for item in search_naver_news(query, display=6):
                 url = item.get("link", "")
                 if url not in seen:
                     seen.add(url)
@@ -218,7 +218,7 @@ def _filter_and_summarize_news(raw_items, state):
     """Claude Haiku로 중복 제거 + 관련성 선별 + 1~2줄 요약."""
     api_key = os.environ.get("ANTHROPIC_API_KEY")
     if not api_key or not raw_items:
-        return raw_items[:8]
+        return raw_items[:10]
     try:
         import anthropic
         client = anthropic.Anthropic(api_key=api_key)
@@ -235,23 +235,23 @@ def _filter_and_summarize_news(raw_items, state):
 
 {articles}
 
-다음 기준으로 최대 8건을 골라 JSON으로만 응답하세요 (설명 없이):
+다음 기준으로 최대 10건을 골라 JSON으로만 응답하세요 (설명 없이):
 1. 실질적으로 같은 사건을 다루는 기사는 가장 내용이 풍부한 1건만 선택
 2. 독자 관심 분야와 관련 높은 기사 우선
-3. 각 기사를 핵심만 담아 한 문장(최대 70자)으로 요약 (원문 문장 그대로 쓰지 말 것)
+3. 각 기사를 핵심만 담아 두 문장(총 100~150자)으로 요약 — 제목과 겹치지 않는 새로운 정보(배경·의미·수치)를 담을 것. 원문 문장 그대로 쓰지 말 것
 4. 요약 안에 큰따옴표(")나 줄바꿈을 넣지 말 것
 
-{{"items": [{{"title": "기사 제목", "summary": "한 문장 요약", "url": "URL"}}]}}"""
+{{"items": [{{"title": "기사 제목", "summary": "두 문장 요약", "url": "URL"}}]}}"""
 
         response = client.messages.create(
             model="claude-haiku-4-5-20251001",
-            max_tokens=3000,
+            max_tokens=4000,
             messages=[{"role": "user", "content": prompt}],
         )
         text = response.content[0].text.strip()
         items = _parse_json_items(text)
         results = []
-        for it in items[:8]:
+        for it in items[:10]:
             title = (it.get("title") or "").strip()
             url = (it.get("url") or "").strip()
             summary = (it.get("summary") or "").strip()
@@ -263,7 +263,7 @@ def _filter_and_summarize_news(raw_items, state):
         return results
     except Exception as e:
         print(f"[에이전트] 뉴스 필터/요약 실패, 원본 반환: {e}")
-        return raw_items[:8]
+        return raw_items[:10]
 
 
 def _parse_json_items(text):
