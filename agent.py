@@ -16,7 +16,7 @@ STATE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "state.jso
 
 DEFAULT_STATE = {
     "news_queries": ["금융 IT 디지털", "핀테크 AI", "금융 IT 세미나 일정", "은행 디지털 세미나"],
-    "seminar_queries": ["금융 IT 세미나 일정", "은행 디지털 세미나"],
+    "seminar_queries": ["IT 디지털 세미나", "금융 핀테크 세미나", "AI 컨퍼런스"],
     # 한시적 뉴스 쿼리: [{"query": "스테이블코인", "until": "2026-06-25"}]
     # until(마지막으로 받을 날짜)이 지나면 자동 제거된다.
     "temp_news_queries": [],
@@ -317,10 +317,11 @@ def fetch_seminar_items(state):
 관심 분야: {interests}
 
 진행 방법(중요):
-- 코드를 작성하지 마세요. 웹 검색 결과 텍스트를 직접 읽고 판단하세요.
-- 핵심 키워드로 2~4번만 효율적으로 검색하세요. 검색 횟수는 제한적입니다.
-- 이벤터스(event-us.kr), 온오프믹스(onoffmix.com), ITFIND(itfind.or.kr), 디지털데일리(ddaily.co.kr/seminar) 등을 참고하세요.
-- 검색을 마치면 곧바로 아래 JSON으로 출력하세요.
+- 코드를 작성하지 마세요.
+- 먼저 web_search로 행사 목록/플랫폼 페이지를 찾으세요.
+- **검색 스니펫에는 날짜가 안 나오는 경우가 많습니다. 행사 목록·상세 페이지를 web_fetch로 직접 열어 실제 개최일(연·월·일)을 확인하세요.**
+- 이벤터스(event-us.kr/search), 온오프믹스(onoffmix.com), ITFIND(itfind.or.kr), 디지털데일리(ddaily.co.kr/seminar), 한국핀테크지원센터(fintech.or.kr) 등을 참고하세요.
+- 검색·열람을 효율적으로(각 5회 이내) 하고, 마치면 곧바로 아래 JSON으로 출력하세요.
 
 포함 기준:
 - 개최일(연·월·일)이 확인된 행사만 포함. 날짜가 "예정/미정", 카테고리명, 장소명뿐이면 제외.
@@ -335,7 +336,10 @@ def fetch_seminar_items(state):
     try:
         client = anthropic.Anthropic(api_key=api_key)
         messages = [{"role": "user", "content": prompt}]
-        tools = [{"type": "web_search_20260209", "name": "web_search", "max_uses": 8}]
+        tools = [
+            {"type": "web_search_20260209", "name": "web_search", "max_uses": 8},
+            {"type": "web_fetch_20260209", "name": "web_fetch", "max_uses": 5},
+        ]
         response = None
         for _ in range(8):  # pause_turn(서버 도구 반복 한도) 대응
             response = client.messages.create(
