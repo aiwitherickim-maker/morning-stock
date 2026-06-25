@@ -343,8 +343,8 @@ def fetch_seminar_items(state):
         response = None
         for _ in range(6):  # pause_turn(서버 도구 반복 한도) 대응
             response = client.messages.create(
-                model="claude-opus-4-8",
-                max_tokens=6000,
+                model="claude-sonnet-4-6",
+                max_tokens=4000,
                 tools=tools,
                 messages=messages,
             )
@@ -362,7 +362,7 @@ def fetch_seminar_items(state):
                 "더 이상 검색하지 말고, 지금까지 확인한 행사만 위에서 지정한 JSON 형식으로만 출력하세요. "
                 "확인된 행사가 없으면 {\"seminars\": []} 를 출력하세요."})
             response = client.messages.create(
-                model="claude-opus-4-8",
+                model="claude-sonnet-4-6",
                 max_tokens=2000,
                 messages=messages,  # 도구 없음 → 바로 텍스트 출력
             )
