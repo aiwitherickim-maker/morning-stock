@@ -43,7 +43,7 @@ def _setup_korean_font():
 HAS_KR_FONT = _setup_korean_font()
 
 KIS_BASE = os.environ.get("KIS_BASE", "https://openapi.koreainvestment.com:9443")
-RECIPIENT = os.environ.get("REPORT_RECIPIENT", "yoonjin1964@gmail.com,aiwitherickim@gmail.com")
+RECIPIENT = os.environ.get("REPORT_RECIPIENT", "aiwitherickim@gmail.com")
 TODAY = datetime.now().strftime("%Y%m%d")
 TODAY_KR = datetime.now().strftime("%Y년 %m월 %d일")
 OUT_DIR = os.path.dirname(os.path.abspath(__file__))
